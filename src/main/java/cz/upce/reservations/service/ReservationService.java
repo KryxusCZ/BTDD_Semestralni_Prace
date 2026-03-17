@@ -4,6 +4,7 @@ import cz.upce.reservations.domain.*;
 import cz.upce.reservations.repository.ReservationRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -35,5 +36,10 @@ public class ReservationService {
             throw new InvalidReservationStateException("Cannot cancel a completed reservation.");
         }
 
+    }
+
+
+    public BigDecimal calculatePrice(User user, Room room, LocalDateTime start, LocalDateTime end) {
+            return null;
     }
 }

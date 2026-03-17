@@ -1,6 +1,8 @@
 package cz.upce.reservations.domain;
 
 import jakarta.persistence.*;
+
+import java.math.BigDecimal;
 import java.time.LocalTime;
 
 @Entity
@@ -15,6 +17,7 @@ public class Room {
     private LocalTime openingTime;
     private LocalTime closingTime;
     private boolean active;
+    private BigDecimal hourlyRate;
 
     public Long getId() {
         return id;
@@ -70,6 +73,14 @@ public class Room {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public BigDecimal getHourlyRate() {
+        return hourlyRate;
+    }
+
+    public void setHourlyRate(BigDecimal hourlyRate) {
+        this.hourlyRate = hourlyRate;
     }
 
     public Room() {}
