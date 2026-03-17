@@ -1,9 +1,6 @@
 package cz.upce.reservations.service;
 
-import cz.upce.reservations.domain.Reservation;
-import cz.upce.reservations.domain.Room;
-import cz.upce.reservations.domain.RoomNotAvailableException;
-import cz.upce.reservations.domain.User;
+import cz.upce.reservations.domain.*;
 import cz.upce.reservations.repository.ReservationRepository;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +30,10 @@ public class ReservationService {
     }
 
     public void cancelReservation(Reservation reservation) {
+        if (reservation.getStatus() == ReservationStatus.COMPLETED ||
+            reservation.getStatus() == ReservationStatus.CANCELLED){
+            throw new InvalidReservationStateException("Cannot cancel a completed reservation.");
+        }
 
     }
 }

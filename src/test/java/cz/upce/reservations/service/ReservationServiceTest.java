@@ -61,4 +61,14 @@ public class ReservationServiceTest {
             });
         }
 
+    @Test
+    void shouldThrowWhenCancellingAlreadyCancelledReservation() {
+        Reservation reservation = new Reservation();
+        reservation.setStatus(ReservationStatus.CANCELLED);
+
+        assertThrows(InvalidReservationStateException.class, () -> {
+            reservationService.cancelReservation(reservation);
+        });
+    }
+
 }
