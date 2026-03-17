@@ -94,7 +94,7 @@ public class ReservationServiceTest {
         
         // Assert
         BigDecimal expectedPrice = new BigDecimal("200");
-        assertEquals(expectedPrice, totalPrice);
+        assertEquals(0, expectedPrice.compareTo(totalPrice));
     }
 
     @Test
@@ -118,7 +118,7 @@ public class ReservationServiceTest {
         // Base: 100 * 2 = 200
         // ADMIN 20% discount: 200 * 0.8 = 160
         BigDecimal expectedPrice = new BigDecimal("160");
-        assertEquals(expectedPrice, totalPrice);
+        assertEquals(0, expectedPrice.compareTo(totalPrice));
     }
 
     @Test
@@ -142,7 +142,7 @@ public class ReservationServiceTest {
         //Base 100 * 4 = 400
         //User with and over 4 hours 10% Discount: 400 * 0.9 = 360
         BigDecimal expectedPrice = new BigDecimal("360");
-        assertEquals(expectedPrice, totalPrice);
+        assertEquals(0, expectedPrice.compareTo(totalPrice));
     }
 
     @Test
@@ -166,7 +166,7 @@ public class ReservationServiceTest {
         //Discount
         //Admin with over 4 hours 20% Discount + 10% Discount: 400 * 0.8 * 0.9 = 288
         BigDecimal expectedPrice = new BigDecimal("288");
-        assertEquals(expectedPrice, totalPrice);
+        assertEquals(0, expectedPrice.compareTo(totalPrice));
 
     }
 

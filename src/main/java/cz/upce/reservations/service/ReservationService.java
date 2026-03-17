@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.time.temporal.ChronoUnit;
 
 
 @Service
@@ -40,6 +41,21 @@ public class ReservationService {
 
 
     public BigDecimal calculatePrice(User user, Room room, LocalDateTime start, LocalDateTime end) {
-            return null;
+        long hours = ChronoUnit.HOURS.between(start, end);
+
+        BigDecimal basePrice = room.getHourlyRate().multiply(new BigDecimal(hours));
+
+
+        BigDecimal finalPrice = basePrice;
+
+        if (user.getRole() == Role.ADMIN) {
+            finalPrice = finalPrice.multiply(new BigDecimal("0.80"));
+        }
+
+        if (hours > 3) {
+            finalPrice = finalPrice.multiply(new BigDecimal("0.90"));
+        }
+        
+        return finalPrice;
     }
 }
