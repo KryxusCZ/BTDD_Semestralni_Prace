@@ -3,6 +3,8 @@ package cz.upce.reservations.service;
 import cz.upce.reservations.domain.*;
 import cz.upce.reservations.repository.ReservationRepository;
 import org.springframework.stereotype.Service;
+import cz.upce.reservations.domain.UnauthorizedActionException;
+
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,7 +33,14 @@ public class ReservationService {
 
     }
 
-    public void cancelReservation(User otherUser, Reservation reservation) {
+    public void cancelReservation(User user, Reservation reservation) {
+        boolean isOwner = reservation.getUser().getId().equals(user.getId());
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+
+        if (!isOwner && !isAdmin) {
+            throw new UnauthorizedActionException("You are not allowed to cancel this reservation.");
+        }
+
         if (reservation.getStatus() == ReservationStatus.COMPLETED ||
             reservation.getStatus() == ReservationStatus.CANCELLED){
             throw new InvalidReservationStateException("Cannot cancel a completed reservation.");
