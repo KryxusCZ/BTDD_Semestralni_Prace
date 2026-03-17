@@ -7,17 +7,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.util.Assert;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ExtendWith(MockitoExtension.class)
 public class ReservationServiceTest {
@@ -57,21 +54,31 @@ public class ReservationServiceTest {
 
         @Test
         void shouldThrowWhenCancellingCompletedReservation(){
+            User user = new User();
+            user.setId(1L);
+            user.setRole(Role.USER);
+
             Reservation reservation = new Reservation();
+            reservation.setUser(user);
             reservation.setStatus(ReservationStatus.COMPLETED);
 
             assertThrows(InvalidReservationStateException.class, () -> {
-                reservationService.cancelReservation(reservation);
+                reservationService.cancelReservation(user, reservation);
             });
         }
 
     @Test
     void shouldThrowWhenCancellingAlreadyCancelledReservation() {
+        User user = new User();
+        user.setId(1L);
+        user.setRole(Role.USER);
+
         Reservation reservation = new Reservation();
+        reservation.setUser(user);
         reservation.setStatus(ReservationStatus.CANCELLED);
 
         assertThrows(InvalidReservationStateException.class, () -> {
-            reservationService.cancelReservation(reservation);
+            reservationService.cancelReservation(user, reservation);
         });
     }
 
@@ -169,5 +176,46 @@ public class ReservationServiceTest {
         assertEquals(0, expectedPrice.compareTo(totalPrice));
 
     }
+
+    @Test
+    void shouldThrowWhenUserCancelsOtherUsersReservation() {
+        User owner = new User();
+        owner.setId(1L);
+        owner.setRole(Role.USER);
+
+        User otherUser = new User();
+        otherUser.setId(2L);
+        otherUser.setRole(Role.USER);
+
+        Reservation reservation = new Reservation();
+        reservation.setUser(owner);
+        reservation.setStatus(ReservationStatus.CONFIRMED);
+
+        assertThrows(UnauthorizedActionException.class, () -> {
+            reservationService.cancelReservation(otherUser, reservation);
+        });
+    }
+
+    @Test
+    void shouldAllowAdminToCancelAnyReservation() {
+        User owner = new User();
+        owner.setId(1L);
+        owner.setRole(Role.USER);
+
+        User admin = new User();
+        admin.setId(2L);
+        admin.setRole(Role.ADMIN);
+
+        Reservation reservation = new Reservation();
+        reservation.setUser(owner);
+        reservation.setStatus(ReservationStatus.CONFIRMED);
+
+        assertDoesNotThrow(() -> {
+            reservationService.cancelReservation(admin, reservation);
+        });
+
+
+    }
+
 
 }

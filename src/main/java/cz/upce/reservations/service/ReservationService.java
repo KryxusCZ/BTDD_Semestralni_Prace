@@ -31,7 +31,7 @@ public class ReservationService {
 
     }
 
-    public void cancelReservation(Reservation reservation) {
+    public void cancelReservation(User otherUser, Reservation reservation) {
         if (reservation.getStatus() == ReservationStatus.COMPLETED ||
             reservation.getStatus() == ReservationStatus.CANCELLED){
             throw new InvalidReservationStateException("Cannot cancel a completed reservation.");
