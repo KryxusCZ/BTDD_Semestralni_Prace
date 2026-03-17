@@ -31,4 +31,8 @@ public class ReservationService {
         }
 
     }
+
+    public void cancelReservation(Reservation reservation) {
+
+    }
 }
