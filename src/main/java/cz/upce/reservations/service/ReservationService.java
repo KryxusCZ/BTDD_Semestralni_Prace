@@ -20,10 +20,18 @@ public class ReservationService {
         this.reservationRepository = reservationRepository;
     }
 
-    public void createReservation(User user, Room room, LocalDateTime start, LocalDateTime end) {
+    public Reservation createReservation(User user, Room room, LocalDateTime start, LocalDateTime end) {
 
 
         List<Reservation> existing = reservationRepository.findByRoom(room);
+
+        for (Reservation r : existing) {
+            if (r.getUser().getId().equals(user.getId()) &&
+                    r.getStartTime().equals(start) &&
+                    r.getEndTime().equals(end)) {
+                return r;
+            }
+        }
 
         for (Reservation r : existing) {
             if (start.isBefore(r.getEndTime()) && end.isAfter(r.getStartTime())) {
@@ -31,6 +39,13 @@ public class ReservationService {
             }
         }
 
+        Reservation newReservation = new Reservation();
+        newReservation.setUser(user);
+        newReservation.setRoom(room);
+        newReservation.setStartTime(start);
+        newReservation.setEndTime(end);
+        newReservation.setStatus(ReservationStatus.CONFIRMED);
+        return newReservation;
     }
 
     public void cancelReservation(User user, Reservation reservation) {

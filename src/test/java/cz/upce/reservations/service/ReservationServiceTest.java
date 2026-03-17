@@ -213,9 +213,32 @@ public class ReservationServiceTest {
         assertDoesNotThrow(() -> {
             reservationService.cancelReservation(admin, reservation);
         });
-
-
     }
 
+    @Test
+    void shouldReturnExistingReservationWhenDuplicateIsSubmitted() {
+        User user = new User();
+        user.setId(1L);
+
+        Room room = new Room();
+        room.setId(1L);
+
+        LocalDateTime start = LocalDateTime.of(2024, 1, 1, 10, 0);
+        LocalDateTime end = LocalDateTime.of(2024, 1, 1, 12, 0);
+
+        Reservation existing = new Reservation();
+        existing.setUser(user);
+        existing.setRoom(room);
+        existing.setStartTime(start);
+        existing.setEndTime(end);
+        existing.setStatus(ReservationStatus.CONFIRMED);
+
+        when(reservationRepository.findByRoom(room))
+            .thenReturn(List.of(existing));
+
+        Reservation result = reservationService.createReservation(user, room, start, end);
+        assertEquals(existing, result);
+
+    }
 
 }
