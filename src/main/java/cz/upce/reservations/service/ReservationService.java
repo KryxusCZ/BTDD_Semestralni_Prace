@@ -82,4 +82,9 @@ public class ReservationService {
         
         return finalPrice;
     }
+
+    public Reservation getReservationById(Long id) {
+        return reservationRepository.findById(id).orElseThrow(() ->
+            new IllegalArgumentException("Reservation not found"));
+    }
 }
