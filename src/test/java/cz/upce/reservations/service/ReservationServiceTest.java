@@ -11,7 +11,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -31,14 +34,18 @@ public class ReservationServiceTest {
         Room room = new Room();
         room.setId(1L);
 
-        User user = new User();
-        user.setId(1L);
+        User user1 = new User();
+        user1.setId(1L);
+
+        User user2 = new User();
+        user2.setId(2L);
 
         LocalDateTime start = LocalDateTime.of(2024, 1, 1, 10, 0);
         LocalDateTime end = LocalDateTime.of(2024, 1, 1, 12, 0);
 
         Reservation existing = new Reservation();
         existing.setRoom(room);
+        existing.setUser(user1);
         existing.setStartTime(start);
         existing.setEndTime(end);
         existing.setStatus(ReservationStatus.CONFIRMED);
@@ -46,9 +53,8 @@ public class ReservationServiceTest {
         when(reservationRepository.findByRoom(room))
             .thenReturn(List.of(existing));
 
-
         assertThrows(RoomNotAvailableException.class, () -> {
-            reservationService.createReservation(user, room, start, end);
+            reservationService.createReservation(user2, room, start, end);
         });
     }
 
@@ -217,8 +223,8 @@ public class ReservationServiceTest {
 
     @Test
     void shouldReturnExistingReservationWhenDuplicateIsSubmitted() {
-        User user = new User();
-        user.setId(1L);
+        User differentUser = new User();
+        differentUser.setId(2L);
 
         Room room = new Room();
         room.setId(1L);
@@ -227,8 +233,8 @@ public class ReservationServiceTest {
         LocalDateTime end = LocalDateTime.of(2024, 1, 1, 12, 0);
 
         Reservation existing = new Reservation();
-        existing.setUser(user);
         existing.setRoom(room);
+        existing.setUser(differentUser);
         existing.setStartTime(start);
         existing.setEndTime(end);
         existing.setStatus(ReservationStatus.CONFIRMED);
@@ -236,7 +242,7 @@ public class ReservationServiceTest {
         when(reservationRepository.findByRoom(room))
             .thenReturn(List.of(existing));
 
-        Reservation result = reservationService.createReservation(user, room, start, end);
+        Reservation result = reservationService.createReservation(differentUser, room, start, end);
         assertEquals(existing, result);
 
     }
