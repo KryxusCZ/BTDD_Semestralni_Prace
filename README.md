@@ -1,3 +1,51 @@
+# Rezervační pokojový systém
+
+## Popis
+REST API aplikace pro správu rezervací místností, postavená na Spring Boot s využitím TDD metodologie.
+
+**Business pravidla:**
+1. Žádné překrývající se rezervace (detekce kolizí)
+2. Nelze zrušit již dokončenou nebo zrušenou rezervaci
+3. Cena = hodinová sazba × počet hodin, ADMIN má slevu 20%, rezervace delší než 3 hodiny mají dalších 10% slevu
+4. Rezervaci může zrušit pouze její vlastník nebo ADMIN
+5. Duplicitní rezervace vrátí existující (idempotence)
+
+## Jak spustit lokálně
+Požadavky: Java 17
+```bash
+git clone https://github.com/yourusername/reservations.git
+cd reservations
+./mvnw spring-boot:run
+```
+Aplikace běží na `http://localhost:8080`
+
+H2 konzole dostupná na `http://localhost:8080/h2-console`
+- JDBC URL: `jdbc:h2:mem:testdb`
+- Uživatelské jméno: `sa`
+- Heslo: (prázdné)
+
+## Jak spustit testy
+```bash
+./mvnw verify
+```
+Report pokrytí kódu je vygenerován v `target/site/jacoco/index.html`
+
+## Architektura
+3-vrstvá architektura: `controller` → `service` → `repository`  
+Všechna business pravidla jsou implementována ve vrstvě service.  
+Doménové výjimky jsou mapovány na HTTP kódy přes `GlobalExceptionHandler`.
+
+## Testovací strategie
+- **Jednotkové testy** – testují všech 5 business pravidel izolovaně, repository je mockováno pomocí Mockito
+- **Integrační testy** – testují celý stack (controller→service→H2) pomocí MockMvc
+- **Pokrytí kódu: 91% řádků, 83% větví** (viditelné v CI artefaktech)
+
+## CI/CD
+GitHub Actions pipeline při každém push: build → testy → JaCoCo report nahrán jako artefakt.
+
+
+
+
 # Room Reservation System
 
 ## Description
