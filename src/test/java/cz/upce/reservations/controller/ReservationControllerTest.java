@@ -1,5 +1,6 @@
 package cz.upce.reservations.controller;
 
+import cz.upce.reservations.domain.ReservationStatus;
 import cz.upce.reservations.domain.Reservation;
 import cz.upce.reservations.domain.Role;
 import cz.upce.reservations.domain.Room;
@@ -26,6 +27,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 public class ReservationControllerTest {
 
+    private User createAndSaveUser(String name, String email) {
+        User user = new User();
+        user.setName(name);
+        user.setEmail(email);
+        user.setRole(Role.USER);
+        return userRepository.save(user);
+    }
+
+    private Room createAndSaveRoom(String name, String location) {
+        Room room = new Room();
+        room.setName(name);
+        room.setLocation(location);
+        room.setCapacity(10);
+        room.setHourlyRate(new BigDecimal("100"));
+        room.setOpeningTime(LocalTime.of(8, 0));
+        room.setClosingTime(LocalTime.of(18, 0));
+        room.setActive(true);
+        return roomRepository.save(room);
+    }
+
     @BeforeEach
     public void setup() {
         reservationRepository.deleteAll();
@@ -47,21 +68,9 @@ public class ReservationControllerTest {
 
     @Test
     void shouldCreateReservationAndReturn201() throws Exception {
-        User user = new User();
-        user.setName("Honza");
-        user.setEmail("rendla@example.com");
-        user.setRole(Role.USER);
-        user = userRepository.save(user);
+        User user = createAndSaveUser("Dalibor", "dalibor@example.com");
 
-        Room room = new Room();
-        room.setName("Room 1");
-        room.setLocation("Building A");
-        room.setCapacity(10);
-        room.setHourlyRate(new BigDecimal("100"));
-        room.setOpeningTime(LocalTime.of(8, 0));
-        room.setClosingTime(LocalTime.of(18, 0));
-        room.setActive(true);
-        room = roomRepository.save(room);
+        Room room = createAndSaveRoom("Room 1", "Building A");
 
         mockMvc.perform(post("/reservations")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -79,29 +88,16 @@ public class ReservationControllerTest {
 
     @Test
     void shouldGetReservationAndReturn200() throws Exception {
-        User user = new User();
-        user.setName("Dalibor");
-        user.setEmail("dalibor@example.com");
-        user.setRole(Role.USER);
-        user = userRepository.save(user);
+        User user = createAndSaveUser("Fanda", "fanda@example.com");
 
-        Room room = new Room();
-        room.setName("Room 2");
-        room.setLocation("Building A");
-        room.setCapacity(10);
-        room.setHourlyRate(new BigDecimal("100"));
-        room.setOpeningTime(LocalTime.of(8, 0));
-        room.setClosingTime(LocalTime.of(18, 0));
-        room.setActive(true);
-        room = roomRepository.save(room);
+        Room room = createAndSaveRoom("Room 2", "Building A");
 
         Reservation reservation = new Reservation();
         reservation.setUser(user);
         reservation.setRoom(room);
         reservation.setStartTime(LocalDateTime.of(2027, 1, 1, 10, 0));
         reservation.setEndTime(LocalDateTime.of(2027, 1, 1, 16, 0));
-       // reservation.setTotalPrice(new BigDecimal("600"));
-        reservation.setStatus(cz.upce.reservations.domain.ReservationStatus.CONFIRMED);
+        reservation.setStatus(ReservationStatus.CONFIRMED);
         reservation = reservationRepository.save(reservation);
 
         mockMvc.perform(get("/reservations/{id}", reservation.getId()))
@@ -111,29 +107,16 @@ public class ReservationControllerTest {
 
     @Test
     void shouldCancelReservationAndReturn204() throws Exception {
-        User user = new User();
-        user.setName("Jana");
-        user.setEmail("jana@example.com");
-        user.setRole(Role.USER);
-        user = userRepository.save(user);
+        User user = createAndSaveUser("Jana", "jana@example.com");
 
-        Room room = new Room();
-        room.setName("Room 3");
-        room.setLocation("Building B");
-        room.setCapacity(10);
-        room.setHourlyRate(new BigDecimal("100"));
-        room.setOpeningTime(LocalTime.of(8, 0));
-        room.setClosingTime(LocalTime.of(18, 0));
-        room.setActive(true);
-        room = roomRepository.save(room);
+        Room room = createAndSaveRoom("Room 3", "Building B");
 
         Reservation reservation = new Reservation();
         reservation.setUser(user);
         reservation.setRoom(room);
         reservation.setStartTime(LocalDateTime.of(2027, 1, 1, 10, 0));
         reservation.setEndTime(LocalDateTime.of(2027, 1, 1, 16, 0));
-        reservation.setStatus(cz.upce.reservations.domain.ReservationStatus.CONFIRMED);
-       // reservation.setTotalPrice(new BigDecimal("600"));
+        reservation.setStatus(ReservationStatus.CONFIRMED);
         reservation = reservationRepository.save(reservation);
 
         mockMvc.perform(delete("/reservations/{id}", reservation.getId())
@@ -143,7 +126,5 @@ public class ReservationControllerTest {
 
 
     }
-
-
 
 }
