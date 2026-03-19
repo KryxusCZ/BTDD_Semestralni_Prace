@@ -11,7 +11,10 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - run: ./mvnw verify
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+      - name: Build and test
+        run: ./mvnw verify
       - uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
