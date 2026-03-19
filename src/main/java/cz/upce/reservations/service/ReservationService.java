@@ -24,16 +24,11 @@ public class ReservationService {
 
         List<Reservation> existing = reservationRepository.findByRoom(room);
 
-        // First check for overlaps with ANY reservation
         for (Reservation r : existing) {
-            if (start.isBefore(r.getEndTime()) && end.isAfter(r.getStartTime())) {
-                // If it's an exact duplicate (same user, same time), return it instead of throwing
-                if (r.getUser().getId().equals(user.getId()) &&
-                    r.getStartTime().equals(start) &&
-                    r.getEndTime().equals(end)) {
+            if (isOverlapping(r, start, end)) {
+                if (isDuplicate(r, user, start, end)) {
                     return r;
                 }
-                // Otherwise, throw exception for overlap
                 throw new RoomNotAvailableException("Room is already booked for the selected time slot.");
             }
         }
@@ -86,5 +81,15 @@ public class ReservationService {
     public Reservation getReservationById(Long id) {
         return reservationRepository.findById(id).orElseThrow(() ->
             new IllegalArgumentException("Reservation not found"));
+    }
+
+    private boolean isOverlapping(Reservation r, LocalDateTime start, LocalDateTime end) {
+        return start.isBefore(r.getEndTime()) && end.isAfter(r.getStartTime());
+    }
+
+    private boolean isDuplicate(Reservation r, User user, LocalDateTime start, LocalDateTime end) {
+        return r.getUser().getId().equals(user.getId()) &&
+                r.getStartTime().equals(start) &&
+                r.getEndTime().equals(end);
     }
 }
