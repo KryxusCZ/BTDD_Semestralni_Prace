@@ -505,11 +505,7 @@ CI → staging → production proběhnou automaticky v sekvenci.
 
 ---
 
-## Checklist pro prezentaci
-
-Před příchodem na prezentaci postupuj v tomto pořadí:
-
-### Příprava (doma / před odevzdáním)
+### Příprava
 - [ ] Docker Desktop spuštěn
 - [ ] `minikube start --driver=docker`
 - [ ] `kubectl get pods -n reservations-staging` → oba pody `1/1 Running`
@@ -517,20 +513,3 @@ Před příchodem na prezentaci postupuj v tomto pořadí:
 - [ ] Runner spuštěn: `cd C:\WINDOWS\system32\actions-runner && ./run.cmd` → `Listening for Jobs`
 - [ ] Port-forward: `kubectl port-forward svc/reservations 8080:80 -n reservations-staging`
 - [ ] Otevřít `requests.http` v IntelliJ
-
-### Co ukázat učiteli
-
-| Co | Jak ukázat |
-|---|---|
-| Git historie + TDD commits | `git log --oneline` nebo GitHub → záložka **Commits** |
-| CI pipeline | GitHub → **Actions** → workflow **CI** → zelený run → artefakty (JaCoCo, Checkstyle) |
-| Docker image v registry | GitHub → **Packages** → `btdd_semestralni_prace` → tagy |
-| CD pipeline | GitHub → **Actions** → workflow **CD** → ukázat staging + prod joby |
-| Kubernetes staging | `kubectl get all -n reservations-staging` |
-| Kubernetes production | `kubectl get all -n reservations-prod` |
-| Health check | `http://localhost:8080/actuator/health` v prohlížeči |
-| REST API | `requests.http` v IntelliJ — spustit jednotlivé requesty |
-| Secrets | `kubectl get secret reservations-secret -n reservations-staging -o yaml` |
-| Rollback | `kubectl rollout undo deployment/reservations -n reservations-staging` |
-| Dva namespacy | `kubectl get namespaces` |
-| ConfigMap | `kubectl get configmap reservations-config -n reservations-staging -o yaml` |
