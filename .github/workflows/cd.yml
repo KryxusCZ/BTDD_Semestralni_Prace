@@ -1,8 +1,15 @@
 name: CD
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
     inputs:
+      image_tag:
+        description: 'Image tag to deploy (e.g. main, v1.0.0)'
+        required: true
+        default: 'main'
       environment:
         description: 'Target environment'
         required: true
@@ -11,25 +18,20 @@ on:
         options:
           - staging
           - production
-      image_tag:
-        description: 'Image tag to deploy (e.g. main, v1.0.0, sha-abc1234)'
-        required: true
-        default: 'main'
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: self-hosted
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/')
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     environment: staging
 
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Determine image tag
         id: tag
@@ -37,9 +39,8 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             echo "tag=${{ github.event.inputs.image_tag }}" >> $env:GITHUB_OUTPUT
-          } elseif ("${{ github.ref }}" -like "refs/tags/*") {
-            $t = "${{ github.ref }}" -replace "refs/tags/", ""
-            echo "tag=$t" >> $env:GITHUB_OUTPUT
+          } elseif ("${{ github.event.workflow_run.head_branch }}" -match "^v\d") {
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> $env:GITHUB_OUTPUT
           } else {
             echo "tag=main" >> $env:GITHUB_OUTPUT
           }
@@ -72,18 +73,27 @@ jobs:
     name: Deploy to Production
     runs-on: self-hosted
     needs: deploy-staging
-    if: startsWith(github.ref, 'refs/tags/')
+    if: >
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment: production
 
     steps:
       - uses: actions/checkout@v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Extract version tag
+      - name: Determine image tag
         id: tag
         shell: powershell
         run: |
-          $t = "${{ github.ref }}" -replace "refs/tags/", ""
-          echo "tag=$t" >> $env:GITHUB_OUTPUT
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Apply prod manifests
         shell: powershell
@@ -98,7 +108,7 @@ jobs:
 
       - name: Wait for rollout
         shell: powershell
-        run: kubectl rollout status deployment/reservations -n reservations-prod --timeout=180s
+        run: kubectl rollout status deployment/reservations -n reservations-prod --timeout=300s
 
       - name: Rollback on failure
         if: failure()
