@@ -34,12 +34,24 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
+      - name: Check kubeconfig secret
+        id: check_secret
+        run: |
+          if [[ -z "${{ secrets.KUBECONFIG_STAGING }}" ]]; then
+            echo "KUBECONFIG_STAGING secret is not set — skipping cluster deployment."
+            echo "available=false" >> $GITHUB_OUTPUT
+          else
+            echo "available=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Configure kubeconfig
+        if: steps.check_secret.outputs.available == 'true'
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
 
       - name: Determine image tag
+        if: steps.check_secret.outputs.available == 'true'
         id: tag
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -51,21 +63,26 @@ jobs:
           fi
 
       - name: Apply namespaces
-        run: kubectl apply -f k8s/namespace.yaml --validate=false
+        if: steps.check_secret.outputs.available == 'true'
+        run: kubectl apply -f k8s/namespace.yaml
 
       - name: Apply staging manifests
-        run: kubectl apply -f k8s/staging/ --validate=false
+        if: steps.check_secret.outputs.available == 'true'
+        run: kubectl apply -f k8s/staging/
 
       - name: Update staging image
+        if: steps.check_secret.outputs.available == 'true'
         run: |
           kubectl set image deployment/reservations \
             reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} \
             -n reservations-staging
 
       - name: Wait for rollout
+        if: steps.check_secret.outputs.available == 'true'
         run: kubectl rollout status deployment/reservations -n reservations-staging --timeout=120s
 
       - name: Smoke test
+        if: steps.check_secret.outputs.available == 'true'
         run: |
           kubectl port-forward svc/reservations 8080:80 -n reservations-staging &
           sleep 5
