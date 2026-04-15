@@ -66,9 +66,7 @@ jobs:
       - name: Smoke test
         shell: powershell
         run: |
-          Start-Job { kubectl port-forward svc/reservations 8080:80 -n reservations-staging }
-          Start-Sleep -Seconds 10
-          Invoke-WebRequest -UseBasicParsing http://localhost:8080/actuator/health
+          kubectl exec deployment/reservations -n reservations-staging -- wget -q -O- http://localhost:8080/actuator/health
 
   deploy-prod:
     name: Deploy to Production
