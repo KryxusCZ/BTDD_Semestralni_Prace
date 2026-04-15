@@ -162,7 +162,7 @@ Spustí:
 - PostgreSQL na portu `5432`
 - Spring Boot aplikaci na portu `8080` s profilem `prod`
 
-Aplikace dostupná na `http://localhost:8080`
+Aplikace dostupná na `http://localhost:8080/actuator/health`
 
 ---
 
@@ -297,7 +297,7 @@ kubectl get all -n reservations-staging
 kubectl port-forward svc/reservations 8080:80 -n reservations-staging
 ```
 
-Aplikace dostupná na `http://localhost:8080`
+Aplikace dostupná na `http://localhost:8080/actuator/health`
 
 ### Rollback
 
@@ -372,19 +372,19 @@ kubectl port-forward svc/reservations 8080:80 -n reservations-staging
 
 Aplikace je dostupná na `http://localhost:8080`
 
-### Krok 7 – Vložit testovací data (pouze při prvním spuštění nebo po ztrátě dat)
+### Krok 7 – Ověřit testovací data
 
-Staging používá `emptyDir` — data se ztratí při restartu minikube. Je nutné je vložit znovu:
+Aplikace automaticky vkládá testovací data při startu pomocí `data.sql` (users, rooms). Data jsou vložena pouze pokud ještě neexistují (`ON CONFLICT DO NOTHING`).
+
+Ověření dat v databázi:
 
 ```bash
 kubectl exec -it deployment/postgres -n reservations-staging -- psql -U reservations -d reservations
 ```
 
 ```sql
-INSERT INTO users (name, email, role) VALUES ('Admin', 'admin@example.com', 'ADMIN');
-INSERT INTO users (name, email, role) VALUES ('Jan Novak', 'jan@example.com', 'USER');
-INSERT INTO rooms (name, location, capacity, hourly_rate, opening_time, closing_time, active)
-VALUES ('Mistnost A', 'Budova 1', 10, 100.00, '08:00:00', '18:00:00', true);
+SELECT * FROM users;
+SELECT * FROM rooms;
 \q
 ```
 
@@ -502,3 +502,35 @@ git push origin v1.0.0
 ```
 
 CI → staging → production proběhnou automaticky v sekvenci.
+
+---
+
+## Checklist pro prezentaci
+
+Před příchodem na prezentaci postupuj v tomto pořadí:
+
+### Příprava (doma / před odevzdáním)
+- [ ] Docker Desktop spuštěn
+- [ ] `minikube start --driver=docker`
+- [ ] `kubectl get pods -n reservations-staging` → oba pody `1/1 Running`
+- [ ] `kubectl get pods -n reservations-prod` → 3 pody `1/1 Running`
+- [ ] Runner spuštěn: `cd C:\WINDOWS\system32\actions-runner && ./run.cmd` → `Listening for Jobs`
+- [ ] Port-forward: `kubectl port-forward svc/reservations 8080:80 -n reservations-staging`
+- [ ] Otevřít `requests.http` v IntelliJ
+
+### Co ukázat učiteli
+
+| Co | Jak ukázat |
+|---|---|
+| Git historie + TDD commits | `git log --oneline` nebo GitHub → záložka **Commits** |
+| CI pipeline | GitHub → **Actions** → workflow **CI** → zelený run → artefakty (JaCoCo, Checkstyle) |
+| Docker image v registry | GitHub → **Packages** → `btdd_semestralni_prace` → tagy |
+| CD pipeline | GitHub → **Actions** → workflow **CD** → ukázat staging + prod joby |
+| Kubernetes staging | `kubectl get all -n reservations-staging` |
+| Kubernetes production | `kubectl get all -n reservations-prod` |
+| Health check | `http://localhost:8080/actuator/health` v prohlížeči |
+| REST API | `requests.http` v IntelliJ — spustit jednotlivé requesty |
+| Secrets | `kubectl get secret reservations-secret -n reservations-staging -o yaml` |
+| Rollback | `kubectl rollout undo deployment/reservations -n reservations-staging` |
+| Dva namespacy | `kubectl get namespaces` |
+| ConfigMap | `kubectl get configmap reservations-config -n reservations-staging -o yaml` |
