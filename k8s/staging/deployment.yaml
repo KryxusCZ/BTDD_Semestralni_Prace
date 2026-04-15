@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: reservations
-          image: ghcr.io/KryxusCZ/BTDD_Semestralni_Prace:main
+          image: ghcr.io/kryxuscz/btdd_semestralni_prace:main
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
