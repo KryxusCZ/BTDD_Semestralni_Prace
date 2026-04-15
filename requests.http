@@ -1,0 +1,57 @@
+### Base URL
+@baseUrl = http://localhost:8080
+
+### Health check
+GET {{baseUrl}}/actuator/health
+
+###
+
+### Vytvoření rezervace
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "roomId": 1,
+  "startTime": "2027-06-01T10:00:00",
+  "endTime": "2027-06-01T12:00:00"
+}
+
+###
+
+### Získání rezervace podle ID
+GET {{baseUrl}}/reservations/1
+
+###
+
+### Zrušení rezervace (userId v těle = kdo ruší)
+DELETE {{baseUrl}}/reservations/1
+Content-Type: application/json
+
+1
+
+###
+
+### Vytvoření rezervace - přesah (očekáváno 409 nebo 400)
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+
+{
+  "userId": 2,
+  "roomId": 1,
+  "startTime": "2027-06-01T10:00:00",
+  "endTime": "2027-06-01T12:00:00"
+}
+
+###
+
+### Vytvoření duplicitní rezervace - idempotence (očekáváno stejná rezervace zpět)
+POST {{baseUrl}}/reservations
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "roomId": 1,
+  "startTime": "2027-06-01T10:00:00",
+  "endTime": "2027-06-01T12:00:00"
+}
