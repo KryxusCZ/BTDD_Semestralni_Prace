@@ -307,7 +307,7 @@ kubectl rollout undo deployment/reservations -n reservations-staging
 
 ---
 
-## Spuštění po restartu PC / Prezentace
+## Spuštění po restartu PC
 
 Tento postup je nutné provést pokaždé, když byl počítač vypnut nebo restartován.
 
