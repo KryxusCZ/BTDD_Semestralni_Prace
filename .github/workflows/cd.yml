@@ -33,7 +33,7 @@ jobs:
 
       - name: Determine image tag
         id: tag
-        shell: pwsh
+        shell: powershell
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
             echo "tag=${{ github.event.inputs.image_tag }}" >> $env:GITHUB_OUTPUT
@@ -45,26 +45,26 @@ jobs:
           }
 
       - name: Apply namespaces
-        shell: pwsh
+        shell: powershell
         run: kubectl apply -f k8s/namespace.yaml
 
       - name: Apply staging manifests
-        shell: pwsh
+        shell: powershell
         run: kubectl apply -f k8s/staging/
 
       - name: Update staging image
-        shell: pwsh
+        shell: powershell
         run: |
           kubectl set image deployment/reservations `
             reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} `
             -n reservations-staging
 
       - name: Wait for rollout
-        shell: pwsh
+        shell: powershell
         run: kubectl rollout status deployment/reservations -n reservations-staging --timeout=180s
 
       - name: Smoke test
-        shell: pwsh
+        shell: powershell
         run: |
           Start-Job { kubectl port-forward svc/reservations 8080:80 -n reservations-staging }
           Start-Sleep -Seconds 10
@@ -82,27 +82,27 @@ jobs:
 
       - name: Extract version tag
         id: tag
-        shell: pwsh
+        shell: powershell
         run: |
           $t = "${{ github.ref }}" -replace "refs/tags/", ""
           echo "tag=$t" >> $env:GITHUB_OUTPUT
 
       - name: Apply prod manifests
-        shell: pwsh
+        shell: powershell
         run: kubectl apply -f k8s/prod/
 
       - name: Update prod image
-        shell: pwsh
+        shell: powershell
         run: |
           kubectl set image deployment/reservations `
             reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} `
             -n reservations-prod
 
       - name: Wait for rollout
-        shell: pwsh
+        shell: powershell
         run: kubectl rollout status deployment/reservations -n reservations-prod --timeout=180s
 
       - name: Rollback on failure
         if: failure()
-        shell: pwsh
+        shell: powershell
         run: kubectl rollout undo deployment/reservations -n reservations-prod
