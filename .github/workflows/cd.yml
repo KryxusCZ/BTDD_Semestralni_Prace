@@ -27,44 +27,48 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/')
     environment: staging
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - uses: actions/checkout@v4.2.2
 
       - name: Determine image tag
         id: tag
+        shell: pwsh
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=main" >> $GITHUB_OUTPUT
-          fi
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $env:GITHUB_OUTPUT
+          } elseif ("${{ github.ref }}" -like "refs/tags/*") {
+            $t = "${{ github.ref }}" -replace "refs/tags/", ""
+            echo "tag=$t" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "tag=main" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Apply namespaces
+        shell: pwsh
         run: kubectl apply -f k8s/namespace.yaml
 
       - name: Apply staging manifests
+        shell: pwsh
         run: kubectl apply -f k8s/staging/
 
       - name: Update staging image
+        shell: pwsh
         run: |
-          kubectl set image deployment/reservations \
-            reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} \
+          kubectl set image deployment/reservations `
+            reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} `
             -n reservations-staging
 
       - name: Wait for rollout
+        shell: pwsh
         run: kubectl rollout status deployment/reservations -n reservations-staging --timeout=180s
 
       - name: Smoke test
+        shell: pwsh
         run: |
-          kubectl port-forward svc/reservations 8080:80 -n reservations-staging &
-          sleep 10
-          curl -f http://localhost:8080/actuator/health
+          Start-Job { kubectl port-forward svc/reservations 8080:80 -n reservations-staging }
+          Start-Sleep -Seconds 10
+          Invoke-WebRequest -UseBasicParsing http://localhost:8080/actuator/health
 
   deploy-prod:
     name: Deploy to Production
@@ -78,20 +82,27 @@ jobs:
 
       - name: Extract version tag
         id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        shell: pwsh
+        run: |
+          $t = "${{ github.ref }}" -replace "refs/tags/", ""
+          echo "tag=$t" >> $env:GITHUB_OUTPUT
 
       - name: Apply prod manifests
+        shell: pwsh
         run: kubectl apply -f k8s/prod/
 
       - name: Update prod image
+        shell: pwsh
         run: |
-          kubectl set image deployment/reservations \
-            reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} \
+          kubectl set image deployment/reservations `
+            reservations=ghcr.io/kryxuscz/btdd_semestralni_prace:${{ steps.tag.outputs.tag }} `
             -n reservations-prod
 
       - name: Wait for rollout
+        shell: pwsh
         run: kubectl rollout status deployment/reservations -n reservations-prod --timeout=180s
 
       - name: Rollback on failure
         if: failure()
+        shell: pwsh
         run: kubectl rollout undo deployment/reservations -n reservations-prod
