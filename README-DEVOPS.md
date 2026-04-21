@@ -9,16 +9,17 @@
 4. [Kontejnerizace](#kontejnerizace)
 5. [Kubernetes](#kubernetes)
 6. [Správa secrets](#správa-secrets)
-7. [Lokální spuštění](#lokální-spuštění)
-8. [Nasazení do Kubernetes](#nasazení-do-kubernetes)
-9. [Spuštění po restartu PC / Prezentace](#spuštění-po-restartu-pc--prezentace)
-10. [Ověření funkčnosti](#ověření-funkčnosti)
+7. [Instalace a požadavky](#instalace-a-požadavky)
+8. [Lokální spuštění](#lokální-spuštění)
+9. [Nasazení do Kubernetes](#nasazení-do-kubernetes)
+10. [Spuštění po restartu PC](#spuštění-po-restartu-pc)
+11. [Ověření funkčnosti](#ověření-funkčnosti)
 
 ---
 
 ## Architektura
 
-Systém se skládá z jedné REST API služby (Spring Boot) a relační databáze (PostgreSQL). V Kubernetes jsou obě komponenty nasazeny jako samostatné Deploymenty ve vlastních namespacech.
+REST API (Spring Boot) + PostgreSQL, nasazeno v Kubernetes (minikube) ve dvou namespacech.
 
 ```mermaid
 graph TD
@@ -29,7 +30,7 @@ graph TD
     CI -->|docker build + push| GHCR[GitHub Container Registry\nghcr.io]
     CI -->|po úspěchu| CD[CD pipeline\nGitHub Actions]
     CD -->|kubectl apply| K8S_STG[Kubernetes\nreservations-staging]
-    CD -->|kubectl apply\npouze pro v* tagy| K8S_PROD[Kubernetes\nreservations-prod]
+    CD -->|kubectl apply\npouze production input| K8S_PROD[Kubernetes\nreservations-prod]
 
     subgraph Kubernetes cluster - minikube
         K8S_STG --> APP_STG[Pod: reservations\nSpring Boot]
@@ -42,12 +43,10 @@ graph TD
     APP_PROD -->|JDBC| DB_PROD
 ```
 
-### Hlavní komponenty
-
 | Komponenta | Technologie | Popis |
 |---|---|---|
 | REST API | Spring Boot 4, Java 17 | Rezervační logika, HTTP endpointy |
-| Databáze | PostgreSQL 16 | Perzistence dat |
+| Databáze | PostgreSQL 16 | Perzistence dat (prod/staging), H2 in-memory pro testy |
 | Kontejnery | Docker | Balení aplikace |
 | Orchestrace | Kubernetes (minikube) | Nasazení, škálování, health checks |
 | CI/CD | GitHub Actions | Automatizovaný build, test, nasazení |
@@ -59,33 +58,28 @@ graph TD
 
 ### CI (`.github/workflows/ci.yml`)
 
-Spouští se automaticky při každém `push` a `pull_request`.
+Spouští se při každém `push` a `pull_request`.
 
 ```
 push / PR
     │
     ├─► build-and-test
-    │       ├── checkout
     │       ├── setup Java 17
     │       ├── ./mvnw verify
     │       │       ├── unit testy (Mockito)
     │       │       ├── integrační testy (MockMvc + H2)
     │       │       ├── Checkstyle (statická analýza)
     │       │       └── JaCoCo (code coverage)
-    │       └── upload artefaktů
-    │               ├── jacoco-report
-    │               ├── checkstyle-report
-    │               └── test-results
+    │       └── artefakty: jacoco-report, checkstyle-report, test-results
     │
     └─► docker (pouze main nebo v* tag)
-            ├── login do GHCR
             ├── docker build (multi-stage)
             └── docker push → ghcr.io/kryxuscz/btdd_semestralni_prace
 ```
 
 ### CD (`.github/workflows/cd.yml`)
 
-Spouští se automaticky po úspěšném dokončení CI (`workflow_run`), nebo ručně přes `workflow_dispatch`.
+Spouští se automaticky po úspěšném CI (`workflow_run`), nebo ručně přes `workflow_dispatch`.
 
 ```
 CI dokončeno úspěšně
@@ -95,9 +89,9 @@ CI dokončeno úspěšně
     │       ├── kubectl apply k8s/staging/
     │       ├── kubectl set image (nový tag)
     │       ├── kubectl rollout status --timeout=300s
-    │       └── smoke test (wget uvnitř podu)
+    │       └── smoke test (wget /actuator/health uvnitř podu)
     │
-    └─► Deploy to Production (pouze v* tagy)
+    └─► Deploy to Production (pouze při workflow_dispatch s environment=production)
             ├── kubectl apply k8s/prod/
             ├── kubectl set image (nový tag)
             ├── kubectl rollout status --timeout=600s
@@ -112,22 +106,15 @@ CI dokončeno úspěšně
 |---|---|---|
 | Namespace | `reservations-staging` | `reservations-prod` |
 | Repliky aplikace | 1 | 2 |
-| Repliky databáze | 1 | 1 |
-| Storage | `emptyDir` (ephemeral) | `PersistentVolumeClaim` (1Gi) |
-| SQL logy | zapnuty (`show-sql=true`) | vypnuty (`show-sql=false`) |
+| Storage databáze | `emptyDir` (ephemeral) | `PersistentVolumeClaim` (1Gi) |
+| SQL logy | zapnuty | vypnuty |
 | CPU request/limit | 100m / 500m | 200m / 1000m |
 | Paměť request/limit | 256Mi / 512Mi | 512Mi / 1Gi |
-| Trigger nasazení | každý push na main | pouze `v*` tagy |
+| Trigger nasazení | každý push na main | workflow_dispatch s `environment=production` |
 | Ingress host | `reservations-staging.local` | `reservations.local` |
+| Seed data | automaticky při startu (`data.sql`) | automaticky při startu (`data.sql`) |
 
-### Konfigurace prostředí
-
-Konfigurace je oddělena od Docker image pomocí Kubernetes ConfigMap a Secret:
-
-- **ConfigMap** – nekritické hodnoty (URL databáze, Spring profil, nastavení JPA)
-- **Secret** – citlivé hodnoty (heslo databáze, uživatelské jméno) zakódované base64
-
-Aplikace čte konfiguraci z environment variables, které jsou injektovány z ConfigMap a Secret:
+Konfigurace je oddělena od Docker image přes Kubernetes **ConfigMap** (nekritické hodnoty) a **Secret** (hesla, zakódované base64):
 
 ```yaml
 envFrom:
@@ -143,24 +130,20 @@ envFrom:
 
 ### Dockerfile
 
-Používá **multi-stage build** pro minimální výsledný image:
+Multi-stage build:
+1. **Builder** – Maven sestaví JAR (JDK 17)
+2. **Runtime** – pouze JRE 17 + JAR (menší image, bez build nástrojů)
 
-1. **Builder stage** – Maven sestavení JAR souboru (JDK 17)
-2. **Runtime stage** – pouze JRE 17, bez build nástrojů
-
-Bezpečnostní opatření:
 - Aplikace běží pod **ne-root uživatelem** (`appuser`)
-- **HEALTHCHECK** ověřuje dostupnost `/actuator/health`
+- `HEALTHCHECK` volá `/actuator/health`
 
-### Lokální vývoj – docker-compose
+### docker-compose
+
+Spuštění aplikace + PostgreSQL lokálně:
 
 ```bash
 docker-compose up --build
 ```
-
-Spustí:
-- PostgreSQL na portu `5432`
-- Spring Boot aplikaci na portu `8080` s profilem `prod`
 
 Aplikace dostupná na `http://localhost:8080/actuator/health`
 
@@ -172,96 +155,94 @@ Aplikace dostupná na `http://localhost:8080/actuator/health`
 
 ```
 k8s/
-├── namespace.yaml          # definice namespaců staging + prod
+├── namespace.yaml              # namespacy staging + prod
 ├── staging/
-│   ├── configmap.yaml      # konfigurace staging prostředí
-│   ├── secret.yaml         # přihlašovací údaje (base64)
-│   ├── deployment.yaml     # Deployment aplikace + PostgreSQL
-│   ├── service.yaml        # ClusterIP Service pro app + DB
-│   └── ingress.yaml        # Ingress pravidla
+│   ├── configmap.yaml          # konfigurace prostředí
+│   ├── secret.yaml             # přihlašovací údaje (base64)
+│   ├── deployment.yaml         # app (1 replika) + postgres
+│   ├── service.yaml            # ClusterIP service
+│   └── ingress.yaml            # HTTP routing
 └── prod/
     ├── configmap.yaml
     ├── secret.yaml
-    ├── deployment.yaml     # 2 repliky, PVC pro PostgreSQL
+    ├── deployment.yaml         # app (2 repliky) + postgres s PVC
     ├── service.yaml
     └── ingress.yaml
 ```
 
-### Resource limity
-
-Každý Pod má nastaveny `requests` (garantované zdroje) a `limits` (maximální zdroje), aby nedocházelo k přetížení clusteru.
+Každý Pod má nastaveny `requests` (garantované zdroje) a `limits` (maximální zdroje).
 
 ### Health checks
 
-Kubernetes ověřuje stav aplikace pomocí dvou sond:
-- **livenessProbe** – pokud selže, Pod se restartuje
-- **readinessProbe** – pokud selže, Pod nedostává traffic
+- **livenessProbe** – pokud selže → Pod se restartuje
+- **readinessProbe** – pokud selže → Pod nedostává traffic
 
-Obě sondy volají Spring Boot Actuator endpoint `/actuator/health`.
+Obě sondy volají `/actuator/health/liveness` a `/actuator/health/readiness`.
 
 ---
 
 ## Správa secrets
 
-**V repozitáři nejsou uložena žádná plaintext hesla.**
+V repozitáři nejsou žádná plaintext hesla.
 
 | Vrstva | Řešení |
 |---|---|
-| Kubernetes | `Secret` objekt s base64 hodnotami, injektován jako env var |
-| GitHub Actions CI | `GITHUB_TOKEN` automaticky poskytnut GitHubem (pro push do GHCR) |
-| GitHub Actions CD | Self-hosted runner s přímým přístupem ke kubectl (bez nutnosti ukládat kubeconfig) |
-
-Pro produkční prostředí je doporučeno použít Kubernetes Sealed Secrets nebo HashiCorp Vault místo base64 v repozitáři.
+| Kubernetes | `Secret` objekt (base64), injektován jako env var do Podu |
+| GitHub Actions CI | `GITHUB_TOKEN` automaticky od GitHubu (push do GHCR) |
+| GitHub Actions CD | Self-hosted runner s přímým přístupem ke kubectl |
 
 ---
 
-## Lokální spuštění
+## Instalace a požadavky
 
-### Požadavky a instalace
-
-| Nástroj | Verze | Instalace |
-|---|---|---|
-| Java (JDK) | 17+ | https://adoptium.net |
-| Docker Desktop | latest | https://www.docker.com/products/docker-desktop |
-| minikube | latest | `winget install minikube` nebo https://minikube.sigs.k8s.io |
-| kubectl | latest | `winget install kubectl` nebo součást Docker Desktop |
-| Git | latest | https://git-scm.com |
-
-#### Ověření instalace
+| Nástroj | Instalace |
+|---|---|
+| Java 17+ | https://adoptium.net |
+| Docker Desktop | https://www.docker.com/products/docker-desktop |
+| minikube | `winget install minikube` |
+| kubectl | součást Docker Desktop |
+| Git | https://git-scm.com |
 
 ```bash
+# Ověření
 java -version
 docker --version
 minikube version
 kubectl version --client
 ```
 
-#### Klonování repozitáře
-
 ```bash
+# Klonování
 git clone https://github.com/KryxusCZ/BTDD_Semestralni_Prace.git
 cd BTDD_Semestralni_Prace
 ```
 
-### Spuštění aplikace lokálně (H2 databáze)
+---
+
+## Lokální spuštění
+
+### Aplikace s H2 (pouze dev, bez databázového serveru)
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Aplikace běží na `http://localhost:8080`
+H2 je in-memory databáze — běží v paměti aplikace, po restartu je prázdná. Slouží pouze pro lokální vývoj a testy, ne pro produkci.
 
-### Spuštění testů
+Dostupné endpointy:
+- `http://localhost:8080/actuator/health`
+- `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:testdb`, user: `sa`, heslo: prázdné)
+
+### Testy
 
 ```bash
 ./mvnw verify
 ```
 
-Vygenerované reporty:
-- Coverage: `target/site/jacoco/index.html`
-- Testy: `target/surefire-reports/`
+- Coverage report: `target/site/jacoco/index.html`
+- Test results: `target/surefire-reports/`
 
-### Spuštění s Docker Compose (PostgreSQL)
+### Docker Compose (aplikace + PostgreSQL)
 
 ```bash
 docker-compose up --build
@@ -271,33 +252,25 @@ docker-compose up --build
 
 ## Nasazení do Kubernetes
 
-### 1. Spuštění minikube
-
 ```bash
+# 1. Spustit minikube
 minikube start --driver=docker
 minikube addons enable ingress
-```
 
-### 2. Aplikování manifestů
-
-```bash
+# 2. Aplikovat manifesty
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/staging/
-```
 
-### 3. Ověření stavu
+# 3. Ověřit stav (počkat na 1/1 Running)
+kubectl get pods -n reservations-staging -w
 
-```bash
-kubectl get all -n reservations-staging
-```
-
-### 4. Přístup k aplikaci
-
-```bash
+# 4. Port-forward
 kubectl port-forward svc/reservations 8080:80 -n reservations-staging
 ```
 
-Aplikace dostupná na `http://localhost:8080/actuator/health`
+API dostupné na `http://localhost:8080/actuator/health`
+
+Testovací data (2 uživatelé, 1 místnost) jsou automaticky vložena při startu přes `data.sql`.
 
 ### Rollback
 
@@ -309,207 +282,74 @@ kubectl rollout undo deployment/reservations -n reservations-staging
 
 ## Spuštění po restartu PC
 
-Tento postup je nutné provést pokaždé, když byl počítač vypnut nebo restartován.
-
-### Krok 1 – Spustit Docker Desktop
-
-Otevři Docker Desktop a počkej, dokud nezobrazí stav **Running** (zelená ikona v systémové liště).
-
-### Krok 2 – Spustit minikube
-
 ```bash
+# 1. Spustit Docker Desktop (GUI)
+
+# 2. Spustit minikube
 minikube start --driver=docker
-```
 
-Počkej na výpis:
-```
-Done! kubectl is now configured to use "minikube" cluster
-```
-
-### Krok 3 – Ověřit stav podů
-
-```bash
+# 3. Ověřit pody (počkat na 1/1 Running)
 kubectl get pods -n reservations-staging
 kubectl get pods -n reservations-prod
-```
 
-Pody se obvykle samy obnoví po startu minikube. Pokud mají stav `Running` — hotovo, přejdi na Krok 5.
-
-Pokud pody nejsou spuštěné nebo hlásí chybu, znovu aplikuj manifesty:
-
-```bash
+# Pokud pody neběží, aplikovat znovu
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/staging/
 kubectl apply -f k8s/prod/
-```
 
-### Krok 4 – Počkat na nastartování aplikace
-
-Aplikace startuje přibližně 60–90 sekund. Sleduj stav:
-
-```bash
-kubectl get pods -n reservations-staging -w
-```
-
-Čekej dokud oba pody nezobrazí `1/1 Running`. Ukonči sledování pomocí `Ctrl+C`.
-
-### Krok 5 – Spustit self-hosted runner (pro CD pipeline)
-
-Otevři nový terminál a spusť runner:
-
-```bash
+# 4. Spustit runner (nový terminál)
 cd C:\WINDOWS\system32\actions-runner
 ./run.cmd
-```
+# Musí hlásit: Listening for Jobs
 
-Runner musí hlásit `Listening for Jobs` — pak je CD pipeline funkční.
-
-### Krok 6 – Port-forward pro přístup k API
-
-```bash
+# 5. Port-forward (další terminál)
 kubectl port-forward svc/reservations 8080:80 -n reservations-staging
 ```
 
-Aplikace je dostupná na `http://localhost:8080`
-
-### Krok 7 – Ověřit testovací data
-
-Aplikace automaticky vkládá testovací data při startu pomocí `data.sql` (users, rooms). Data jsou vložena pouze pokud ještě neexistují (`ON CONFLICT DO NOTHING`).
-
-Ověření dat v databázi:
-
-```bash
-kubectl exec -it deployment/postgres -n reservations-staging -- psql -U reservations -d reservations
-```
-
-```sql
-SELECT * FROM users;
-SELECT * FROM rooms;
-\q
-```
-
-### Shrnutí – rychlý přehled příkazů
-
-```bash
-# 1. Docker Desktop spustit ručně přes GUI
-
-# 2. Minikube
-minikube start --driver=docker
-
-# 3. Ověřit pody
-kubectl get pods -n reservations-staging
-kubectl get pods -n reservations-prod
-
-# 4. Případně znovu nasadit
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/staging/
-kubectl apply -f k8s/prod/
-
-# 5. Runner (nový terminál)
-cd C:\WINDOWS\system32\actions-runner && ./run.cmd
-
-# 6. Port-forward (další terminál)
-kubectl port-forward svc/reservations 8080:80 -n reservations-staging
-```
+Testovací data jsou vložena automaticky při startu aplikace — žádný ruční SQL není potřeba.
 
 ---
 
 ## Ověření funkčnosti
 
-### 1. CI pipeline
+### CI pipeline
 
-Po každém `push` na GitHub zkontroluj záložku **Actions** → workflow **CI** musí být zelený.
-
-Artefakty ke stažení v CI runu:
-- `jacoco-report` – přehled pokrytí kódu
-- `checkstyle-report` – výsledky statické analýzy
+GitHub → **Actions** → workflow **CI** → zelený run → artefakty:
+- `jacoco-report` – pokrytí kódu
+- `checkstyle-report` – statická analýza
 - `test-results` – výsledky testů
 
-### 2. Docker image v GHCR
+### Docker image
 
-Po zeleném CI běhu na `main` větvi:
+GitHub repo → **Packages** → `btdd_semestralni_prace` → tagy `main`, `v1.0.0`
 
-```
-GitHub repo → Packages → btdd_semestralni_prace
-```
-
-Musí být vidět tag `main` (nebo `v1.0.0` po tagu).
-
-### 3. Kubernetes – staging
+### Kubernetes
 
 ```bash
-# Ověření běžících podů
+# Stav podů
 kubectl get pods -n reservations-staging
-
-# Oba pody musí být 1/1 Running
-# NAME                            READY   STATUS    RESTARTS
-# postgres-xxx                    1/1     Running   0
-# reservations-xxx                1/1     Running   0
-
-# Health check aplikace
-kubectl exec deployment/reservations -n reservations-staging -- wget -q -O- http://localhost:8080/actuator/health
-
-# Odpověď musí obsahovat: "status":"UP"
-```
-
-### 4. Kubernetes – production
-
-```bash
 kubectl get pods -n reservations-prod
 
-# Musí běžet 2 repliky aplikace + 1 postgres
-# NAME                            READY   STATUS    RESTARTS
-# postgres-xxx                    1/1     Running   0
-# reservations-xxx-1              1/1     Running   0
-# reservations-xxx-2              1/1     Running   0
+# Health check
+kubectl exec deployment/reservations -n reservations-staging -- wget -q -O- http://localhost:8080/actuator/health
+# Očekáváno: "status":"UP"
 ```
 
-### 5. REST API – funkční test
+### REST API
 
-```bash
-kubectl port-forward svc/reservations 8080:80 -n reservations-staging
-```
+Po spuštění port-forward otevři `requests.http` v IntelliJ a spusť requesty:
 
-Otevři prohlížeč nebo použij curl:
+| Request | Očekáváno | Co testuje |
+|---|---|---|
+| `GET /actuator/health` | 200 | Aplikace běží |
+| `POST /reservations` | 201 | Vytvoření rezervace |
+| `GET /reservations/1` | 200 | Načtení rezervace |
+| `DELETE /reservations/1` | 204 | Zrušení rezervace |
+| `POST` přesah | 409 | Detekce překryvu |
+| `POST` duplicitní | 201 | Idempotence |
 
-```
-GET  http://localhost:8080/actuator/health
-```
+### CD pipeline
 
-Vytvoření rezervace (nejprve je třeba mít uživatele a místnost v databázi):
+Push na `main` → CI → CD staging automaticky.
 
-```
-POST http://localhost:8080/reservations
-Content-Type: application/json
-
-{
-  "userId": 1,
-  "roomId": 1,
-  "startTime": "2027-06-01T10:00:00",
-  "endTime": "2027-06-01T12:00:00"
-}
-```
-
-### 6. CD pipeline
-
-Po push na `main` → CI doběhne → CD se automaticky spustí a nasadí do stagingu.
-
-Pro produkci: push tagu `v*`:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-CI → staging → production proběhnou automaticky v sekvenci.
-
----
-
-### Příprava
-- [ ] Docker Desktop spuštěn
-- [ ] `minikube start --driver=docker`
-- [ ] `kubectl get pods -n reservations-staging` → oba pody `1/1 Running`
-- [ ] `kubectl get pods -n reservations-prod` → 3 pody `1/1 Running`
-- [ ] Runner spuštěn: `cd C:\WINDOWS\system32\actions-runner && ./run.cmd` → `Listening for Jobs`
-- [ ] Port-forward: `kubectl port-forward svc/reservations 8080:80 -n reservations-staging`
-- [ ] Otevřít `requests.http` v IntelliJ
+Production: GitHub → **Actions** → **CD** → **Run workflow** → `production`, tag `main`.

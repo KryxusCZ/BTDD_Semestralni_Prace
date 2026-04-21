@@ -1,92 +1,103 @@
-# Rezervační pokojový systém
+# Rezervační systém – BTDD & DevOps
 
-## Popis
-REST API aplikace pro správu rezervací místností, postavená na Spring Boot s využitím TDD metodologie.
+**Repozitář:** https://github.com/KryxusCZ/BTDD_Semestralni_Prace
 
-**Business pravidla:**
+REST API pro správu rezervací místností. Projekt pokrývá dva předměty:
+- **BTDD** – vývoj aplikace metodologií TDD (Spring Boot, Java 17)
+- **DevOps** – CI/CD pipeline, kontejnerizace, Kubernetes nasazení
+
+---
+
+## BTDD – Test-Driven Development
+
+### Business pravidla
+
 1. Žádné překrývající se rezervace (detekce kolizí)
-2. Nelze zrušit již dokončenou nebo zrušenou rezervaci
-3. Cena = hodinová sazba × počet hodin, ADMIN má slevu 20%, rezervace delší než 3 hodiny mají dalších 10% slevu
+2. Nelze zrušit dokončenou nebo již zrušenou rezervaci
+3. Cena = hodinová sazba × počet hodin; ADMIN má slevu 20%, rezervace 4+ hodiny mají dalších 10% slevu
 4. Rezervaci může zrušit pouze její vlastník nebo ADMIN
 5. Duplicitní rezervace vrátí existující (idempotence)
 
-## Jak spustit lokálně
-Požadavky: Java 17
+### TDD metodologie
+
+Každé business pravidlo bylo implementováno v cyklu **red → green → refactor**, viditelné v git historii (`git log --oneline`).
+
+### Architektura
+
+3-vrstvá: `controller` → `service` → `repository`
+
+- Business logika je výhradně ve vrstvě `service`
+- Doménové výjimky jsou mapovány na HTTP kódy přes `GlobalExceptionHandler`
+- Testy: H2 in-memory databáze (dev/test), PostgreSQL (prod)
+
+### Testovací strategie
+
+| Typ | Nástroj | Co testuje |
+|---|---|---|
+| Jednotkové testy | JUnit 5 + Mockito | 5 business pravidel izolovaně, repository mockováno |
+| Integrační testy | MockMvc + H2 | Celý stack controller → service → databáze |
+| Pokrytí kódu | JaCoCo | 91 % řádků, 83 % větví |
+| Statická analýza | Checkstyle | Dodržení coding standards |
+
+### Lokální spuštění (H2, bez DB serveru)
+
 ```bash
-git clone https://github.com/yourusername/reservations.git
-cd reservations
+git clone https://github.com/KryxusCZ/BTDD_Semestralni_Prace.git
+cd BTDD_Semestralni_Prace
 ./mvnw spring-boot:run
 ```
-Aplikace běží na `http://localhost:8080`
 
-H2 konzole dostupná na `http://localhost:8080/h2-console`
-- JDBC URL: `jdbc:h2:mem:testdb`
-- Uživatelské jméno: `sa`
-- Heslo: (prázdné)
+- API: `http://localhost:8080/actuator/health`
+- H2 konzole: `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:testdb`, user: `sa`, heslo: prázdné)
 
-## Jak spustit testy
+### Spuštění testů
+
 ```bash
 ./mvnw verify
 ```
-Report pokrytí kódu je vygenerován v `target/site/jacoco/index.html`
 
-## Architektura
-3-vrstvá architektura: `controller` → `service` → `repository`  
-Všechna business pravidla jsou implementována ve vrstvě service.  
-Doménové výjimky jsou mapovány na HTTP kódy přes `GlobalExceptionHandler`.
+- Coverage: `target/site/jacoco/index.html`
+- Test results: `target/surefire-reports/`
 
-## Testovací strategie
-- **Jednotkové testy** – testují všech 5 business pravidel izolovaně, repository je mockováno pomocí Mockito
-- **Integrační testy** – testují celý stack (controller→service→H2) pomocí MockMvc
-- **Pokrytí kódu: 91% řádků, 83% větví** (viditelné v CI artefaktech)
+---
 
-## CI/CD
-GitHub Actions pipeline při každém push: build → testy → JaCoCo report nahrán jako artefakt.
+## DevOps
 
+Podrobná dokumentace: [`README-DEVOPS.md`](README-DEVOPS.md)
 
+### Přehled
 
+| Komponenta | Technologie |
+|---|---|
+| REST API | Spring Boot 4, Java 17 |
+| Databáze | PostgreSQL 16 (prod/staging), H2 (testy) |
+| Kontejnery | Docker (multi-stage build) |
+| Orchestrace | Kubernetes (minikube) |
+| CI/CD | GitHub Actions |
+| Registry | GitHub Container Registry (ghcr.io) |
 
-# Room Reservation System
+### CI/CD pipeline
 
-## Description
-REST API for managing room reservations built with Spring Boot using TDD.
+- **CI** – spouští se při každém `push` a `pull_request`: Maven build, unit + integrační testy, Checkstyle, JaCoCo, Docker build + push do GHCR
+- **CD** – spouští se automaticky po úspěšném CI: nasazení do `reservations-staging`; produkce (`reservations-prod`) pouze přes `workflow_dispatch`
 
-**Business rules:**
-1. No double-booking (overlap detection)
-2. Cannot cancel a completed/already cancelled reservation
-3. Price = hourly rate × hours, ADMIN gets 20% off, 3+ hours gets 10% off
-4. Only owner or ADMIN can cancel a reservation
-5. Duplicate reservation returns existing one (idempotence)
+### Kubernetes
 
-## How to run locally
-Requirements: Java 17
+Dva namespacy v minikube:
+
+| | Staging | Production |
+|---|---|---|
+| Namespace | `reservations-staging` | `reservations-prod` |
+| Repliky | 1 | 2 |
+| Storage DB | `emptyDir` | `PersistentVolumeClaim` (1Gi) |
+
+### Rychlý start (K8s)
+
 ```bash
-git clone https://github.com/yourusername/reservations.git
-cd reservations
-./mvnw spring-boot:run
+minikube start --driver=docker
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/staging/
+kubectl port-forward svc/reservations 8080:80 -n reservations-staging
 ```
-App runs on `http://localhost:8080`
 
-H2 console available at `http://localhost:8080/h2-console`
-- JDBC URL: `jdbc:h2:mem:testdb`
-- Username: `sa`
-- Password: (empty)
-
-## How to run tests
-```bash
-./mvnw verify
-```
-Coverage report generated at `target/site/jacoco/index.html`
-
-## Architecture
-3-layer architecture: `controller` → `service` → `repository`  
-All business rules live in the service layer.  
-Domain exceptions mapped to HTTP codes via `GlobalExceptionHandler`.
-
-## Testing strategy
-- **Unit tests** – test all 5 business rules in isolation using Mockito to mock repositories
-- **Integration tests** – test full stack (controller→service→H2) using MockMvc
-- **Coverage: 91% line, 83% branch** (visible in CI artifacts)
-
-## CI/CD
-GitHub Actions pipeline on every push: build → test → JaCoCo report uploaded as artifact.
+API dostupné na `http://localhost:8080/actuator/health`
