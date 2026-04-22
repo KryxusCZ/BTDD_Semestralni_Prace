@@ -39,6 +39,7 @@ public class ReservationService {
         newReservation.setStartTime(start);
         newReservation.setEndTime(end);
         newReservation.setStatus(ReservationStatus.CONFIRMED);
+        newReservation.setTotalPrice(calculatePrice(user, room, start, end));
         return reservationRepository.save(newReservation);
     }
 
